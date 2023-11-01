@@ -1,0 +1,128 @@
+From 9fdd59cfda93b508e76770146a8295d0a26b175d Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Tue, 14 May 2019 08:46:48 +0200
+Subject: [PATCH 1/3] udisks2: Handle lockdown option to disable writing
+
+Handle the new mount-removable-storage-devices-as-read-only option of
+org.gnome.desktop.lockdown schema and mount removable devices as read-only
+if enabled.
+---
+ monitor/udisks2/gvfsudisks2volume.c        |  8 +++++
+ monitor/udisks2/gvfsudisks2volumemonitor.c | 34 ++++++++++++++++++++++
+ monitor/udisks2/gvfsudisks2volumemonitor.h |  1 +
+ 3 files changed, 43 insertions(+)
+
+diff --git a/monitor/udisks2/gvfsudisks2volume.c b/monitor/udisks2/gvfsudisks2volume.c
+index a509b5dd..b2545058 100644
+--- a/monitor/udisks2/gvfsudisks2volume.c
++++ b/monitor/udisks2/gvfsudisks2volume.c
+@@ -1093,6 +1093,7 @@ do_mount (GTask *task)
+ {
+   MountData *data = g_task_get_task_data (task);
+   GVariantBuilder builder;
++  GVfsUDisks2Volume *volume = g_task_get_source_object (task);
+ 
+   g_variant_builder_init (&builder, G_VARIANT_TYPE_VARDICT);
+   if (data->mount_operation == NULL)
+@@ -1101,6 +1102,13 @@ do_mount (GTask *task)
+                              "{sv}",
+                              "auth.no_user_interaction", g_variant_new_boolean (TRUE));
+     }
++  if (gvfs_udisks2_volume_monitor_get_readonly_lockdown (volume->monitor))
++    {
++      g_variant_builder_add (&builder,
++                             "{sv}",
++                             "options", g_variant_new_string ("ro"));
++
++    }
+   udisks_filesystem_call_mount (data->filesystem_to_mount,
+                                 g_variant_builder_end (&builder),
+                                 g_task_get_cancellable (task),
+diff --git a/monitor/udisks2/gvfsudisks2volumemonitor.c b/monitor/udisks2/gvfsudisks2volumemonitor.c
+index 0a5ce96e..37c81fcf 100644
+--- a/monitor/udisks2/gvfsudisks2volumemonitor.c
++++ b/monitor/udisks2/gvfsudisks2volumemonitor.c
+@@ -65,6 +65,9 @@ struct _GVfsUDisks2VolumeMonitor
+   /* we keep volumes/mounts for blank and audio discs separate to handle e.g. mixed discs properly */
+   GList *disc_volumes;
+   GList *disc_mounts;
++
++  GSettings *lockdown_settings;
++  gboolean readonly_lockdown;
+ };
+ 
+ static UDisksClient *get_udisks_client_sync (GError **error);
+@@ -140,6 +143,8 @@ gvfs_udisks2_volume_monitor_finalize (GObject *object)
+   g_list_free_full (monitor->disc_volumes, g_object_unref);
+   g_list_free_full (monitor->disc_mounts, g_object_unref);
+ 
++  g_clear_object (&monitor->lockdown_settings);
++
+   G_OBJECT_CLASS (gvfs_udisks2_volume_monitor_parent_class)->finalize (object);
+ }
+ 
+@@ -304,6 +309,17 @@ gvfs_udisks2_volume_monitor_constructor (GType                  type,
+   return ret;
+ }
+ 
++static void
++lockdown_settings_changed (GSettings *settings,
++                           gchar     *key,
++                           gpointer   user_data)
++{
++  GVfsUDisks2VolumeMonitor *monitor = GVFS_UDISKS2_VOLUME_MONITOR (user_data);
++
++  monitor->readonly_lockdown = g_settings_get_boolean (settings,
++                                                       "mount-removable-storage-devices-as-read-only");
++}
++
+ static void
+ gvfs_udisks2_volume_monitor_init (GVfsUDisks2VolumeMonitor *monitor)
+ {
+@@ -325,6 +341,15 @@ gvfs_udisks2_volume_monitor_init (GVfsUDisks2VolumeMonitor *monitor)
+                     G_CALLBACK (mountpoints_changed),
+                     monitor);
+ 
++  monitor->lockdown_settings = g_settings_new ("org.gnome.desktop.lockdown");
++  monitor->readonly_lockdown = g_settings_get_boolean (monitor->lockdown_settings,
++                                                       "mount-removable-storage-devices-as-read-only");
++  g_signal_connect_object (monitor->lockdown_settings,
++                           "changed",
++                           G_CALLBACK (lockdown_settings_changed),
++                           monitor,
++                           0);
++
+   update_all (monitor, FALSE, TRUE);
+ }
+ 
+@@ -388,6 +413,15 @@ gvfs_udisks2_volume_monitor_get_gudev_client (GVfsUDisks2VolumeMonitor *monitor)
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+ 
++gboolean
++gvfs_udisks2_volume_monitor_get_readonly_lockdown (GVfsUDisks2VolumeMonitor *monitor)
++{
++  g_return_val_if_fail (GVFS_IS_UDISKS2_VOLUME_MONITOR (monitor), FALSE);
++  return monitor->readonly_lockdown;
++}
++
++/* ---------------------------------------------------------------------------------------------------- */
++
+ void
+ gvfs_udisks2_volume_monitor_update (GVfsUDisks2VolumeMonitor *monitor)
+ {
+diff --git a/monitor/udisks2/gvfsudisks2volumemonitor.h b/monitor/udisks2/gvfsudisks2volumemonitor.h
+index 7f0215dc..751a0236 100644
+--- a/monitor/udisks2/gvfsudisks2volumemonitor.h
++++ b/monitor/udisks2/gvfsudisks2volumemonitor.h
+@@ -49,6 +49,7 @@ GVolumeMonitor *gvfs_udisks2_volume_monitor_new               (void);
+ UDisksClient   *gvfs_udisks2_volume_monitor_get_udisks_client (GVfsUDisks2VolumeMonitor *monitor);
+ void            gvfs_udisks2_volume_monitor_update            (GVfsUDisks2VolumeMonitor *monitor);
+ GUdevClient    *gvfs_udisks2_volume_monitor_get_gudev_client  (GVfsUDisks2VolumeMonitor *monitor);
++gboolean        gvfs_udisks2_volume_monitor_get_readonly_lockdown (GVfsUDisks2VolumeMonitor *monitor);
+ 
+ G_END_DECLS
+ 
+-- 
+2.21.0
+
