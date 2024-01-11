@@ -1,0 +1,385 @@
+From af4d0d88604af7c196e461a743f2d1e81239d76a Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Tue, 14 May 2019 09:31:37 +0200
+Subject: [PATCH 2/3] daemon: Handle lockdown option to disable writing
+
+Handle the new mount-removable-storage-devices-as-read-only option of
+org.gnome.desktop.lockdown schema and present AFC, MTP, GPhoto2 devices
+as read-only if enabled.
+---
+ daemon/gvfsbackend.c           | 62 ++++++++++++++++++++++++++++++++--
+ daemon/gvfsbackend.h           |  6 ++++
+ daemon/gvfsbackendafc.c        |  2 ++
+ daemon/gvfsbackendgphoto2.c    |  1 +
+ daemon/gvfsbackendmtp.c        |  1 +
+ daemon/gvfsjobcopy.c           |  7 ++++
+ daemon/gvfsjobdelete.c         |  7 ++++
+ daemon/gvfsjobmakedirectory.c  |  7 ++++
+ daemon/gvfsjobmakesymlink.c    |  7 ++++
+ daemon/gvfsjobmove.c           |  7 ++++
+ daemon/gvfsjobopenforwrite.c   |  7 ++++
+ daemon/gvfsjobpush.c           |  7 ++++
+ daemon/gvfsjobqueryfsinfo.c    | 11 ++----
+ daemon/gvfsjobsetattribute.c   |  7 ++++
+ daemon/gvfsjobsetdisplayname.c |  7 ++++
+ daemon/gvfsjobtrash.c          |  7 ++++
+ 16 files changed, 143 insertions(+), 10 deletions(-)
+
+diff --git a/daemon/gvfsbackend.c b/daemon/gvfsbackend.c
+index 4fd3455c..599733ef 100644
+--- a/daemon/gvfsbackend.c
++++ b/daemon/gvfsbackend.c
+@@ -80,6 +80,9 @@ struct _GVfsBackendPrivate
+   char *default_location;
+   GMountSpec *mount_spec;
+   gboolean block_requests;
++
++  GSettings *lockdown_settings;
++  gboolean readonly_lockdown;
+ };
+ 
+ 
+@@ -155,7 +158,9 @@ g_vfs_backend_finalize (GObject *object)
+   g_free (backend->priv->default_location);
+   if (backend->priv->mount_spec)
+     g_mount_spec_unref (backend->priv->mount_spec);
+-  
++
++  g_clear_object (&backend->priv->lockdown_settings);
++
+   if (G_OBJECT_CLASS (g_vfs_backend_parent_class)->finalize)
+     (*G_OBJECT_CLASS (g_vfs_backend_parent_class)->finalize) (object);
+ }
+@@ -587,7 +592,29 @@ g_vfs_backend_add_auto_info (GVfsBackend *backend,
+        g_file_attribute_matcher_matches (matcher,
+                                          G_FILE_ATTRIBUTE_THUMBNAILING_FAILED)))
+     get_thumbnail_attributes (uri, info);
+-  
++
++  if (backend->priv->readonly_lockdown)
++    {
++      g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_DELETE, FALSE);
++      g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_RENAME, FALSE);
++      g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_TRASH, FALSE);
++      g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_ACCESS_CAN_WRITE, FALSE);
++    }
++}
++
++void
++g_vfs_backend_add_auto_fs_info (GVfsBackend *backend,
++                                GFileAttributeMatcher *matcher,
++                                GFileInfo *info)
++{
++  const char *type;
++
++  type = g_vfs_backend_get_backend_type (backend);
++  if (type)
++    g_file_info_set_attribute_string (info, G_FILE_ATTRIBUTE_GVFS_BACKEND, type);
++
++  if (backend->priv->readonly_lockdown)
++    g_file_info_set_attribute_boolean (info, G_FILE_ATTRIBUTE_FILESYSTEM_READONLY, TRUE);
+ }
+ 
+ void
+@@ -1047,3 +1074,34 @@ g_vfs_backend_force_unmount (GVfsBackend *backend)
+                                   (GAsyncReadyCallback) forced_unregister_mount_callback,
+                                   NULL);
+ }
++
++static void
++lockdown_settings_changed (GSettings *settings,
++                           gchar     *key,
++                           gpointer   user_data)
++{
++  GVfsBackend *backend = G_VFS_BACKEND (user_data);
++
++  backend->priv->readonly_lockdown = g_settings_get_boolean (settings,
++                                                             "mount-removable-storage-devices-as-read-only");
++}
++
++
++void
++g_vfs_backend_handle_readonly_lockdown (GVfsBackend *backend)
++{
++  backend->priv->lockdown_settings = g_settings_new ("org.gnome.desktop.lockdown");
++  backend->priv->readonly_lockdown = g_settings_get_boolean (backend->priv->lockdown_settings,
++                                                             "mount-removable-storage-devices-as-read-only");
++  g_signal_connect_object (backend->priv->lockdown_settings,
++                           "changed",
++                           G_CALLBACK (lockdown_settings_changed),
++                           backend,
++                           0);
++}
++
++gboolean
++g_vfs_backend_get_readonly_lockdown (GVfsBackend *backend)
++{
++  return backend->priv->readonly_lockdown;
++}
+diff --git a/daemon/gvfsbackend.h b/daemon/gvfsbackend.h
+index 9c7476cf..431dd290 100644
+--- a/daemon/gvfsbackend.h
++++ b/daemon/gvfsbackend.h
+@@ -516,6 +516,9 @@ void        g_vfs_backend_add_auto_info                  (GVfsBackend
+ 							  GFileAttributeMatcher *matcher,
+ 							  GFileInfo             *info,
+ 							  const char            *uri);
++void        g_vfs_backend_add_auto_fs_info               (GVfsBackend           *backend,
++                                                          GFileAttributeMatcher *matcher,
++                                                          GFileInfo             *info);
+ 
+ void        g_vfs_backend_set_block_requests             (GVfsBackend           *backend,
+                                                           gboolean               value);
+@@ -534,6 +537,9 @@ gboolean    g_vfs_backend_invocation_first_handler       (GVfsDBusMount *object,
+                                                           GDBusMethodInvocation *invocation,
+                                                           GVfsBackend *backend);
+ 
++void        g_vfs_backend_handle_readonly_lockdown       (GVfsBackend *backend);
++gboolean    g_vfs_backend_get_readonly_lockdown          (GVfsBackend *backend);
++
+ G_END_DECLS
+ 
+ #endif /* __G_VFS_BACKEND_H__ */
+diff --git a/daemon/gvfsbackendafc.c b/daemon/gvfsbackendafc.c
+index b6e6a106..ce68aa45 100644
+--- a/daemon/gvfsbackendafc.c
++++ b/daemon/gvfsbackendafc.c
+@@ -2760,6 +2760,8 @@ g_vfs_backend_afc_init (GVfsBackendAfc *self)
+     }
+ 
+   g_mutex_init (&self->apps_lock);
++
++  g_vfs_backend_handle_readonly_lockdown (G_VFS_BACKEND (self));
+ }
+ 
+ static void
+diff --git a/daemon/gvfsbackendgphoto2.c b/daemon/gvfsbackendgphoto2.c
+index 51e9a3bd..7e50194a 100644
+--- a/daemon/gvfsbackendgphoto2.c
++++ b/daemon/gvfsbackendgphoto2.c
+@@ -614,6 +614,7 @@ g_vfs_backend_gphoto2_init (GVfsBackendGphoto2 *gphoto2_backend)
+   g_mutex_init (&gphoto2_backend->lock);
+ 
+   g_vfs_backend_set_display_name (backend, "gphoto2");
++  g_vfs_backend_handle_readonly_lockdown (G_VFS_BACKEND (backend));
+ 
+   mount_spec = g_mount_spec_new ("gphoto2");
+   g_vfs_backend_set_mount_spec (backend, mount_spec);
+diff --git a/daemon/gvfsbackendmtp.c b/daemon/gvfsbackendmtp.c
+index e3a25ef2..c4f1e855 100644
+--- a/daemon/gvfsbackendmtp.c
++++ b/daemon/gvfsbackendmtp.c
+@@ -379,6 +379,7 @@ g_vfs_backend_mtp_init (GVfsBackendMtp *backend)
+   g_mutex_init (&backend->mutex);
+   g_vfs_backend_set_display_name (G_VFS_BACKEND (backend), "mtp");
+   g_vfs_backend_set_icon_name (G_VFS_BACKEND (backend), "multimedia-player");
++  g_vfs_backend_handle_readonly_lockdown (G_VFS_BACKEND (backend));
+ 
+   mount_spec = g_mount_spec_new ("mtp");
+   g_vfs_backend_set_mount_spec (G_VFS_BACKEND (backend), mount_spec);
+diff --git a/daemon/gvfsjobcopy.c b/daemon/gvfsjobcopy.c
+index 785d7480..cf33da56 100644
+--- a/daemon/gvfsjobcopy.c
++++ b/daemon/gvfsjobcopy.c
+@@ -141,6 +141,13 @@ try (GVfsJob *job)
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+   gboolean res;
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_copy == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobdelete.c b/daemon/gvfsjobdelete.c
+index 92892f15..8d5e5b8e 100644
+--- a/daemon/gvfsjobdelete.c
++++ b/daemon/gvfsjobdelete.c
+@@ -120,6 +120,13 @@ try (GVfsJob *job)
+   GVfsJobDelete *op_job = G_VFS_JOB_DELETE (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_delete == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobmakedirectory.c b/daemon/gvfsjobmakedirectory.c
+index 98bb28d5..56a9c42a 100644
+--- a/daemon/gvfsjobmakedirectory.c
++++ b/daemon/gvfsjobmakedirectory.c
+@@ -120,6 +120,13 @@ try (GVfsJob *job)
+   GVfsJobMakeDirectory *op_job = G_VFS_JOB_MAKE_DIRECTORY (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_make_directory == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobmakesymlink.c b/daemon/gvfsjobmakesymlink.c
+index 2c55e26b..2684b6fd 100644
+--- a/daemon/gvfsjobmakesymlink.c
++++ b/daemon/gvfsjobmakesymlink.c
+@@ -124,6 +124,13 @@ try (GVfsJob *job)
+   GVfsJobMakeSymlink *op_job = G_VFS_JOB_MAKE_SYMLINK (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_make_symlink == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobmove.c b/daemon/gvfsjobmove.c
+index cc4ad220..5903d17a 100644
+--- a/daemon/gvfsjobmove.c
++++ b/daemon/gvfsjobmove.c
+@@ -141,6 +141,13 @@ try (GVfsJob *job)
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+   gboolean res;
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_move == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobopenforwrite.c b/daemon/gvfsjobopenforwrite.c
+index 68eae532..60ce64f9 100644
+--- a/daemon/gvfsjobopenforwrite.c
++++ b/daemon/gvfsjobopenforwrite.c
+@@ -230,6 +230,13 @@ try (GVfsJob *job)
+   GVfsJobOpenForWrite *op_job = G_VFS_JOB_OPEN_FOR_WRITE (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (op_job->mode == OPEN_FOR_WRITE_CREATE)
+     {
+       if (class->try_create == NULL)
+diff --git a/daemon/gvfsjobpush.c b/daemon/gvfsjobpush.c
+index d7e48d86..a8df73a8 100644
+--- a/daemon/gvfsjobpush.c
++++ b/daemon/gvfsjobpush.c
+@@ -146,6 +146,13 @@ try (GVfsJob *job)
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+   gboolean res;
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_push == NULL)
+     return FALSE;
+ 
+diff --git a/daemon/gvfsjobqueryfsinfo.c b/daemon/gvfsjobqueryfsinfo.c
+index 898052ea..3363311a 100644
+--- a/daemon/gvfsjobqueryfsinfo.c
++++ b/daemon/gvfsjobqueryfsinfo.c
+@@ -147,15 +147,10 @@ create_reply (GVfsJob *job,
+               GDBusMethodInvocation *invocation)
+ {
+   GVfsJobQueryFsInfo *op_job = G_VFS_JOB_QUERY_FS_INFO (job);
+-  const char *type;
+-
+-  type = g_vfs_backend_get_backend_type (op_job->backend);
+-
+-  if (type)
+-    g_file_info_set_attribute_string (op_job->file_info,
+-				      G_FILE_ATTRIBUTE_GVFS_BACKEND,
+-				      type);
+ 
++  g_vfs_backend_add_auto_fs_info (op_job->backend,
++                                  op_job->attribute_matcher,
++                                  op_job->file_info);
+   g_file_info_set_attribute_mask (op_job->file_info,
+                                   op_job->attribute_matcher);
+ 
+diff --git a/daemon/gvfsjobsetattribute.c b/daemon/gvfsjobsetattribute.c
+index 1efe7c94..ac7618a4 100644
+--- a/daemon/gvfsjobsetattribute.c
++++ b/daemon/gvfsjobsetattribute.c
+@@ -146,6 +146,13 @@ try (GVfsJob *job)
+   GVfsJobSetAttribute *op_job = G_VFS_JOB_SET_ATTRIBUTE (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_set_attribute == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobsetdisplayname.c b/daemon/gvfsjobsetdisplayname.c
+index badb10dd..e12ae879 100644
+--- a/daemon/gvfsjobsetdisplayname.c
++++ b/daemon/gvfsjobsetdisplayname.c
+@@ -124,6 +124,13 @@ try (GVfsJob *job)
+   GVfsJobSetDisplayName *op_job = G_VFS_JOB_SET_DISPLAY_NAME (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_set_display_name == NULL)
+     return FALSE;
+   
+diff --git a/daemon/gvfsjobtrash.c b/daemon/gvfsjobtrash.c
+index 1738f8a2..5234ebf8 100644
+--- a/daemon/gvfsjobtrash.c
++++ b/daemon/gvfsjobtrash.c
+@@ -119,6 +119,13 @@ try (GVfsJob *job)
+   GVfsJobTrash *op_job = G_VFS_JOB_TRASH (job);
+   GVfsBackendClass *class = G_VFS_BACKEND_GET_CLASS (op_job->backend);
+ 
++  if (g_vfs_backend_get_readonly_lockdown (op_job->backend))
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                        _("Filesystem is read-only"));
++      return TRUE;
++    }
++
+   if (class->try_trash == NULL)
+     return FALSE;
+   
+-- 
+2.21.0
+
