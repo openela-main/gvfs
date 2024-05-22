@@ -1,0 +1,65 @@
+From f93bd46c36c8e42f17f0f61b79c55a3794906395 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Fri, 6 Mar 2020 10:08:09 +0100
+Subject: [PATCH] trash: Add support for x-gvfs-notrash option to ignore mounts
+
+Add support for x-gvfs-notrash mount option, which allows to ignore
+trash folder on certain mounts. This might be especially useful e.g.
+to prevent wakeups of autofs mounts...
+
+https://bugzilla.redhat.com/show_bug.cgi?id=1096200
+---
+ daemon/trashlib/trashwatcher.c | 30 +++++++++++++++++++++++++++++-
+ 1 file changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/trashlib/trashwatcher.c b/daemon/trashlib/trashwatcher.c
+index 6b455235..01c440a1 100644
+--- a/daemon/trashlib/trashwatcher.c
++++ b/daemon/trashlib/trashwatcher.c
+@@ -211,6 +211,34 @@ trash_mount_remove (TrashMount **mount_ptr)
+   g_slice_free (TrashMount, mount);
+ }
+ 
++static gboolean
++ignore_trash_mount (GUnixMountEntry *mount)
++{
++  GUnixMountPoint *mount_point = NULL;
++  const gchar *mount_options;
++  gboolean retval = TRUE;
++
++  if (g_unix_mount_is_system_internal (mount))
++    return TRUE;
++
++  mount_options = g_unix_mount_get_options (mount);
++  if (mount_options == NULL)
++    {
++      mount_point = g_unix_mount_point_at (g_unix_mount_get_mount_path (mount),
++                                           NULL);
++      if (mount_point != NULL)
++        mount_options = g_unix_mount_point_get_options (mount_point);
++    }
++
++  if (mount_options == NULL ||
++      strstr (mount_options, "x-gvfs-notrash") == NULL)
++    retval = FALSE;
++
++  g_clear_pointer (&mount_point, g_unix_mount_point_free);
++
++  return retval;
++}
++
+ static void
+ trash_watcher_remount (TrashWatcher *watcher)
+ {
+@@ -229,7 +257,7 @@ trash_watcher_remount (TrashWatcher *watcher)
+     {
+       int result;
+ 
+-      if (new && g_unix_mount_is_system_internal (new->data))
++      if (new && ignore_trash_mount (new->data))
+         {
+           g_unix_mount_free (new->data);
+           new = new->next;
+-- 
+2.41.0
+

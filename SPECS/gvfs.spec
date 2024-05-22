@@ -3,7 +3,7 @@
 %global avahi_version 0.6
 %global fuse_version 2.8.0
 %global gettext_version 0.19.4
-%global glib2_version 2.51.0
+%global glib2_version 2.56.4-162
 %global goa_version 3.17.1
 %global gsettings_desktop_schemas_version 3.28.1-2
 %global gudev_version 147
@@ -25,7 +25,7 @@
 
 Name: gvfs
 Version: 1.36.2
-Release: 14%{?dist}
+Release: 16%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -75,6 +75,10 @@ Patch14: smb-Use-O_RDWR-to-fix-fstat-when-writing.patch
 
 # https://bugzilla.redhat.com/show_bug.cgi?id=2083481
 Patch15: google-performance-fixes.patch
+
+# https://issues.redhat.com/browse/RHEL-2824
+Patch16: trash-Add-support-for-x-gvfs-notrash-option-to-ignor.patch
+Patch17: trash-Sync-trash-dir-items-when-files-change.patch
 
 BuildRequires: pkgconfig
 BuildRequires: pkgconfig(glib-2.0) >= %{glib2_version}
@@ -466,6 +470,12 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Wed Dec 06 2023 Ondrej Holy <oholy@redhat.com> - 1.36.2-16
+- Sync trash dir items when files change (RHEL-2824)
+
+* Mon Oct 09 2023 Ondrej Holy <oholy@redhat.com> - 1.36.2-15
+- Add support for x-gvfs-notrash mount option (RHEL-2824)
+
 * Thu Jun 16 2022 Ondrej Holy <oholy@redhat.com> - 1.36.2-14
 - Backport performance fixes for Google backend (#2083481)
 
