@@ -25,7 +25,7 @@
 
 Name: gvfs
 Version: 1.36.2
-Release: 16%{?dist}
+Release: 17%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -79,6 +79,9 @@ Patch15: google-performance-fixes.patch
 # https://issues.redhat.com/browse/RHEL-2824
 Patch16: trash-Add-support-for-x-gvfs-notrash-option-to-ignor.patch
 Patch17: trash-Sync-trash-dir-items-when-files-change.patch
+
+# https://issues.redhat.com/browse/RHEL-52342
+Patch18: trash-Add-support-for-x-gvfs-trash-mount-option.patch
 
 BuildRequires: pkgconfig
 BuildRequires: pkgconfig(glib-2.0) >= %{glib2_version}
@@ -470,6 +473,9 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Thu Sep 26 2024 Ondrej Holy <oholy@redhat.com> - 1.36.2-17
+- Add support for x-gvfs-trash mount option (RHEL-52342)
+
 * Wed Dec 06 2023 Ondrej Holy <oholy@redhat.com> - 1.36.2-16
 - Sync trash dir items when files change (RHEL-2824)
 
