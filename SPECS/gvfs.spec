@@ -25,7 +25,7 @@
 
 Name: gvfs
 Version: 1.36.2
-Release: 17%{?dist}
+Release: 18%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -82,6 +82,15 @@ Patch17: trash-Sync-trash-dir-items-when-files-change.patch
 
 # https://issues.redhat.com/browse/RHEL-52342
 Patch18: trash-Add-support-for-x-gvfs-trash-mount-option.patch
+
+# https://issues.redhat.com/browse/RHEL-45163
+Patch19: daemon-Add-support-for-edit-mode.patch
+Patch20: gdaemonfile-Use-edit-mode-when-private-edit-flag-is-.patch
+Patch21: fuse-Use-edit-mode-instead-of-returning-ENOTSUP.patch
+Patch22: smb-Fail-when-initial_offset-can-t-be-determined.patch
+Patch23: smb-Disable-seek-support-when-appening.patch
+Patch24: smb-Fix-offset-after-truncate-when-appending.patch
+Patch25: smb-Implement-support-for-edit-mode.patch
 
 BuildRequires: pkgconfig
 BuildRequires: pkgconfig(glib-2.0) >= %{glib2_version}
@@ -473,6 +482,9 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Thu Feb 13 2025 Ondrej Holy <oholy@redhat.com> - 1.36.2-18
+- Add edit mode support for smb backend (RHEL-45163)
+
 * Thu Sep 26 2024 Ondrej Holy <oholy@redhat.com> - 1.36.2-17
 - Add support for x-gvfs-trash mount option (RHEL-52342)
 

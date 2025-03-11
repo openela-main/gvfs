@@ -1,0 +1,39 @@
+From fabacfef29e24628f7a1a303be4b54cb006431bb Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Thu, 1 Aug 2024 12:40:15 +0200
+Subject: [PATCH] fuse: Use edit mode instead of returning ENOTSUP
+
+Currently, the FUSE daemon fails with the `ENOTSUP` error when opening
+a file for writing without `O_APPEND` or `O_TRUNC`. This is a problem
+for many POSIX applications. Let's try the newly added edit mode instead.
+
+Fixes: https://gitlab.gnome.org/GNOME/gvfs/-/issues/249
+---
+ client/gvfsfusedaemon.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/client/gvfsfusedaemon.c b/client/gvfsfusedaemon.c
+index ff5641ae..9ec4e3d8 100644
+--- a/client/gvfsfusedaemon.c
++++ b/client/gvfsfusedaemon.c
+@@ -1003,6 +1003,8 @@ setup_input_stream (GFile *file, FileHandle *fh)
+   return result;
+ }
+ 
++#define _g_file_edit(file, flags, cancellable, error) g_file_append_to(file, flags | (1 << 15), cancellable, error)
++
+ static gint
+ setup_output_stream (GFile *file, FileHandle *fh, int flags)
+ {
+@@ -1032,7 +1034,7 @@ setup_output_stream (GFile *file, FileHandle *fh, int flags)
+       else if (flags & O_APPEND)
+         fh->stream = g_file_append_to (file, 0, NULL, &error);
+       else
+-        result = -ENOTSUP;
++        fh->stream = _g_file_edit (file, 0, NULL, &error);
+       if (fh->stream)
+         fh->pos = g_seekable_tell (G_SEEKABLE (fh->stream));
+     }
+-- 
+2.46.2
+
