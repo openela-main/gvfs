@@ -1,0 +1,94 @@
+From 1d4acb8d95612384f603aa5c0c8d20060010fbc7 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Thu, 1 Aug 2024 12:35:43 +0200
+Subject: [PATCH] daemon: Add support for edit mode
+
+Currently, it is impossible to open the output stream without truncating
+the file or appending it. This is a problem for many POSIX applications
+relying on our FUSE daemon. Let's add an edit mode that could be used for
+this purpose.
+
+Related: https://gitlab.gnome.org/GNOME/gvfs/-/issues/249
+---
+ daemon/gvfsbackend.h         |  8 ++++++++
+ daemon/gvfsjobopenforwrite.c | 23 +++++++++++++++++++++++
+ daemon/gvfsjobopenforwrite.h |  3 ++-
+ 3 files changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/gvfsbackend.h b/daemon/gvfsbackend.h
+index 9c7476cf..0f97cff6 100644
+--- a/daemon/gvfsbackend.h
++++ b/daemon/gvfsbackend.h
+@@ -211,6 +211,14 @@ struct _GVfsBackendClass
+ 				 const char *etag,
+ 				 gboolean make_backup,
+ 				 GFileCreateFlags flags);
++  gboolean (*try_edit)          (GVfsBackend *backend,
++                                 GVfsJobOpenForWrite *job,
++                                 const char *filename,
++                                 GFileCreateFlags flags);
++  void     (*edit)              (GVfsBackend *backend,
++                                 GVfsJobOpenForWrite *job,
++                                 const char *filename,
++                                 GFileCreateFlags flags);
+   void     (*close_write)       (GVfsBackend *backend,
+ 				 GVfsJobCloseWrite *job,
+ 				 GVfsBackendHandle handle);
+diff --git a/daemon/gvfsjobopenforwrite.c b/daemon/gvfsjobopenforwrite.c
+index 439b63c4..5b6e8033 100644
+--- a/daemon/gvfsjobopenforwrite.c
++++ b/daemon/gvfsjobopenforwrite.c
+@@ -220,6 +220,20 @@ run (GVfsJob *job)
+ 		      op_job->make_backup,
+ 		      op_job->flags);
+     }
++  else if (op_job->mode == OPEN_FOR_WRITE_EDIT)
++    {
++      if (class->edit == NULL)
++        {
++          g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                            _("Operation not supported"));
++          return;
++        }
++
++      class->edit (op_job->backend,
++                   op_job,
++                   op_job->filename,
++                   op_job->flags);
++    }
+   else
+     g_assert_not_reached (); /* Handled in try */
+ }
+@@ -259,6 +273,15 @@ try (GVfsJob *job)
+ 				 op_job->make_backup,
+ 				 op_job->flags);
+     }
++  else if (op_job->mode == OPEN_FOR_WRITE_EDIT)
++    {
++      if (class->try_edit == NULL)
++        return FALSE;
++      return class->try_edit (op_job->backend,
++                              op_job,
++                              op_job->filename,
++                              op_job->flags);
++    }
+   else
+     {
+       GError *error = NULL;
+diff --git a/daemon/gvfsjobopenforwrite.h b/daemon/gvfsjobopenforwrite.h
+index 141189f3..e070d0ea 100644
+--- a/daemon/gvfsjobopenforwrite.h
++++ b/daemon/gvfsjobopenforwrite.h
+@@ -41,7 +41,8 @@ typedef struct _GVfsJobOpenForWriteClass   GVfsJobOpenForWriteClass;
+ typedef enum {
+   OPEN_FOR_WRITE_CREATE = 0,
+   OPEN_FOR_WRITE_APPEND = 1,
+-  OPEN_FOR_WRITE_REPLACE = 2
++  OPEN_FOR_WRITE_REPLACE = 2,
++  OPEN_FOR_WRITE_EDIT = 3
+ } GVfsJobOpenForWriteMode;
+ 
+ typedef enum {
+-- 
+2.46.2
+

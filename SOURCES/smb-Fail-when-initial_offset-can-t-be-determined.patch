@@ -1,0 +1,54 @@
+From 885bcc18b65ebd6d3c5bac56994f9f631cb9d363 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Wed, 6 Nov 2024 14:58:18 +0100
+Subject: [PATCH] smb: Fail when initial_offset can't be determined
+
+Currently, when the initial_offset can't be determined, the seek and
+truncate operations are disabled. Let's fail immediatelly instead to
+simplify the code as a preparation for the follow-up changes. Just a
+note tha this situation can't happen with the current libsmbclient
+codebase.
+---
+ daemon/gvfsbackendsmb.c | 22 ++++++++++++----------
+ 1 file changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/daemon/gvfsbackendsmb.c b/daemon/gvfsbackendsmb.c
+index c1c2d5f0..dafbb71c 100644
+--- a/daemon/gvfsbackendsmb.c
++++ b/daemon/gvfsbackendsmb.c
+@@ -857,20 +857,22 @@ do_append_to (GVfsBackend *backend,
+     g_vfs_job_failed_from_errno (G_VFS_JOB (job), fixup_open_errno (errno));
+   else
+     {
+-      handle = g_new0 (SmbWriteHandle, 1);
+-      handle->file = file;
+-
+       smbc_lseek = smbc_getFunctionLseek (op_backend->smb_context);
+       initial_offset = smbc_lseek (op_backend->smb_context, file,
+ 						       0, SEEK_CUR);
+       if (initial_offset == (off_t) -1)
+-	g_vfs_job_open_for_write_set_can_seek (job, FALSE);
+-      else
+-	{
+-	  g_vfs_job_open_for_write_set_initial_offset (job, initial_offset);
+-	  g_vfs_job_open_for_write_set_can_seek (job, TRUE);
+-	  g_vfs_job_open_for_write_set_can_truncate (job, TRUE);
+-	}
++        {
++          g_vfs_job_failed_from_errno (G_VFS_JOB (job),
++                                       fixup_open_errno (errno));
++          return;
++        }
++
++      handle = g_new0 (SmbWriteHandle, 1);
++      handle->file = file;
++
++      g_vfs_job_open_for_write_set_initial_offset (job, initial_offset);
++      g_vfs_job_open_for_write_set_can_seek (job, TRUE);
++      g_vfs_job_open_for_write_set_can_truncate (job, TRUE);
+       g_vfs_job_open_for_write_set_handle (job, handle);
+       g_vfs_job_succeeded (G_VFS_JOB (job));
+     }
+-- 
+2.46.2
+

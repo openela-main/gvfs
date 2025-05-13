@@ -1,0 +1,36 @@
+From b17f15558194ab3025c8a5cb1a2767c54333f28e Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Wed, 13 Nov 2024 11:22:27 +0100
+Subject: [PATCH] smb: Disable seek support when appening
+
+The seek is currently enabled when appending. However, the libsmbclient
+doesn't support O_APPEND flag property [1]. The offset is not reset after
+seeking. Let's disable seek support when appending to deal with it. The
+seek operation doesn't make sense when appening anyway.
+
+[1] https://github.com/samba-team/samba/blob/e4e3f05/source3/libsmb/libsmb_file.c#L162-L183
+---
+ daemon/gvfsbackendsmb.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/gvfsbackendsmb.c b/daemon/gvfsbackendsmb.c
+index dafbb71c..c2075555 100644
+--- a/daemon/gvfsbackendsmb.c
++++ b/daemon/gvfsbackendsmb.c
+@@ -871,7 +871,12 @@ do_append_to (GVfsBackend *backend,
+       handle->file = file;
+ 
+       g_vfs_job_open_for_write_set_initial_offset (job, initial_offset);
+-      g_vfs_job_open_for_write_set_can_seek (job, TRUE);
++
++      /* The O_APPEND flag is not properly supported by the libsmbclient library
++       * when seeking. See:
++       * https://github.com/samba-team/samba/blob/e4e3f05/source3/libsmb/libsmb_file.c#L162-L183
++       */
++      g_vfs_job_open_for_write_set_can_seek (job, FALSE);
+       g_vfs_job_open_for_write_set_can_truncate (job, TRUE);
+       g_vfs_job_open_for_write_set_handle (job, handle);
+       g_vfs_job_succeeded (G_VFS_JOB (job));
+-- 
+2.46.2
+

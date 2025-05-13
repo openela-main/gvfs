@@ -1,0 +1,64 @@
+From 1c2cc7c0b80e5fc3f59e8557232bb6ff8ebbab7a Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Fri, 12 Jul 2024 13:21:49 +0200
+Subject: [PATCH] trash: Add support for x-gvfs-trash mount option
+
+Currently, the trash functionality is disabled for system internal mounts.
+That might be a problem in some cases. The `x-gvfs-notrash` mount option
+allows disabling the trash functionality for certain mounts. Let's add
+support for the `x-gvfs-trash` mount option to allow the opposite.
+
+See: https://issues.redhat.com/browse/RHEL-46828
+
+Related: https://gitlab.gnome.org/GNOME/glib/-/merge_requests/4155
+---
+ daemon/trashlib/trashwatcher.c | 22 +++++++++++++---------
+ 1 file changed, 13 insertions(+), 9 deletions(-)
+
+diff --git a/daemon/trashlib/trashwatcher.c b/daemon/trashlib/trashwatcher.c
+index eec32d0b..707323cb 100644
+--- a/daemon/trashlib/trashwatcher.c
++++ b/daemon/trashlib/trashwatcher.c
+@@ -218,10 +218,6 @@ ignore_trash_mount (GUnixMountEntry *mount)
+ {
+   GUnixMountPoint *mount_point = NULL;
+   const gchar *mount_options;
+-  gboolean retval = TRUE;
+-
+-  if (g_unix_mount_is_system_internal (mount))
+-    return TRUE;
+ 
+   mount_options = g_unix_mount_get_options (mount);
+   if (mount_options == NULL)
+@@ -230,15 +226,23 @@ ignore_trash_mount (GUnixMountEntry *mount)
+                                            NULL);
+       if (mount_point != NULL)
+         mount_options = g_unix_mount_point_get_options (mount_point);
++
++      g_clear_pointer (&mount_point, g_unix_mount_point_free);
+     }
+ 
+-  if (mount_options == NULL ||
+-      strstr (mount_options, "x-gvfs-notrash") == NULL)
+-    retval = FALSE;
++  if (mount_options != NULL)
++    {
++      if (strstr (mount_options, "x-gvfs-trash") != NULL)
++        return FALSE;
+ 
+-  g_clear_pointer (&mount_point, g_unix_mount_point_free);
++      if (strstr (mount_options, "x-gvfs-notrash") != NULL)
++        return TRUE;
++    }
++
++  if (g_unix_mount_is_system_internal (mount))
++    return TRUE;
+ 
+-  return retval;
++  return FALSE;
+ }
+ 
+ static void
+-- 
+2.46.1
+

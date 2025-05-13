@@ -1,0 +1,52 @@
+From 5dd5f5b97bc753cdf32a04e3de4bddce651ceb9b Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Thu, 1 Aug 2024 12:39:49 +0200
+Subject: [PATCH] gdaemonfile: Use edit mode when private edit flag is used
+
+The newly added edit mode is meant only for private use by our FUSE
+daemon. Let's add a new private flag for the append operation to enable
+the edit mode.
+---
+ client/gdaemonfile.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/client/gdaemonfile.c b/client/gdaemonfile.c
+index 485698b2..d66d0934 100644
+--- a/client/gdaemonfile.c
++++ b/client/gdaemonfile.c
+@@ -57,6 +57,8 @@ G_DEFINE_TYPE_WITH_CODE (GDaemonFile, g_daemon_file, G_TYPE_OBJECT,
+ 			 G_IMPLEMENT_INTERFACE (G_TYPE_FILE,
+ 						g_daemon_file_file_iface_init))
+ 
++#define PRIVATE_EDIT_FLAG (1 << 15)
++
+ static void
+ g_daemon_file_finalize (GObject *object)
+ {
+@@ -1198,7 +1200,10 @@ g_daemon_file_append_to (GFile *file,
+                          GCancellable *cancellable,
+                          GError **error)
+ {
+-  return file_open_write (file, 1, "", FALSE, flags, cancellable, error);
++  if (flags & PRIVATE_EDIT_FLAG)
++    return file_open_write (file, 3, "", FALSE, flags, cancellable, error);
++  else
++    return file_open_write (file, 1, "", FALSE, flags, cancellable, error);
+ }
+ 
+ static GFileOutputStream *
+@@ -3130,7 +3135,10 @@ g_daemon_file_append_to_async (GFile                      *file,
+   g_task_set_source_tag (task, g_daemon_file_append_to_async);
+   g_task_set_priority (task, io_priority);
+ 
+-  file_open_write_async (file, task, 1, "", FALSE, flags);
++  if (flags & PRIVATE_EDIT_FLAG)
++    file_open_write_async (file, task, 3, "", FALSE, flags);
++  else
++    file_open_write_async (file, task, 1, "", FALSE, flags);
+ }
+ 
+ static GFileOutputStream *
+-- 
+2.46.2
+

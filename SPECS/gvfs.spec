@@ -22,7 +22,7 @@
 
 Name: gvfs
 Version: 1.48.1
-Release: 4%{?dist}
+Release: 6%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -32,6 +32,18 @@ Source0: https://download.gnome.org/sources/gvfs/1.48/gvfs-%{version}.tar.xz
 # https://bugzilla.redhat.com/show_bug.cgi?id=2093861
 Patch0: smb-Ignore-EINVAL-for-kerberos-ccache-login.patch
 Patch1: smb-Rework-anonymous-handling-to-avoid-EINVAL.patch
+
+# https://issues.redhat.com/browse/RHEL-52342
+Patch2: trash-Add-support-for-x-gvfs-trash-mount-option.patch
+
+# https://issues.redhat.com/browse/RHEL-71088
+Patch3: daemon-Add-support-for-edit-mode.patch
+Patch4: gdaemonfile-Use-edit-mode-when-private-edit-flag-is-.patch
+Patch5: fuse-Use-edit-mode-instead-of-returning-ENOTSUP.patch
+Patch6: smb-Fail-when-initial_offset-can-t-be-determined.patch
+Patch7: smb-Disable-seek-support-when-appening.patch
+Patch8: smb-Fix-offset-after-truncate-when-appending.patch
+Patch9: smb-Implement-support-for-edit-mode.patch
 
 BuildRequires: meson
 BuildRequires: gcc
@@ -429,6 +441,12 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Thu Feb 13 2025 Ondrej Holy <oholy@redhat.com> - 1.48.1-6
+- Add edit mode support for smb backend (RHEL-71088)
+
+* Thu Sep 26 2024 Ondrej Holy <oholy@redhat.com> - 1.48.1-5
+- Add support for x-gvfs-trash mount option (RHEL-52353)
+
 * Tue Jun 14 2022 Ondrej Holy <oholy@redhat.com> - 1.48.1-4
 - Ignore EINVAL for kerberos/ccache login to fix SMB mounting (#2093861)
 
