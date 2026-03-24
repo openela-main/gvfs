@@ -1,0 +1,39 @@
+From 45a5612574a54bf4648cedafa5b977efb48293c9 Mon Sep 17 00:00:00 2001
+Date: Thu, 12 Sep 2024 13:27:04 +0200
+Subject: [PATCH] udisks2: Run update synchronously for internal changes
+
+The commit 14dc69de introduced performance improvement by skipping
+accumulated mount, mount point and udisks2 client changes. That was
+achieved by running the update with a small delay. But this logic was
+mistakenly used for the `gvfs_udisks2_volume_monitor_update` function
+also. This function expects the update to happen synchronously. This
+leads to various issues e.g. `g_volume_get_mount` fails when called
+immediately after `g_volume_mount`. Let's run the update synchronously
+from the `gvfs_udisks2_volume_monitor_update` function to fix the
+mentioned issues.
+
+Fixes: https://gitlab.gnome.org/GNOME/gvfs/-/issues/762
+---
+ monitor/udisks2/gvfsudisks2volumemonitor.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/monitor/udisks2/gvfsudisks2volumemonitor.c b/monitor/udisks2/gvfsudisks2volumemonitor.c
+index 3a2015b29..f78f28d40 100644
+--- a/monitor/udisks2/gvfsudisks2volumemonitor.c
++++ b/monitor/udisks2/gvfsudisks2volumemonitor.c
+@@ -457,7 +457,11 @@ gvfs_udisks2_volume_monitor_update (GVfsUDisks2VolumeMonitor *monitor)
+ {
+   g_return_if_fail (GVFS_IS_UDISKS2_VOLUME_MONITOR (monitor));
+   udisks_client_settle (monitor->client);
+-  schedule_update (monitor);
++
++  if (monitor->update_id != 0)
++    g_source_remove (monitor->update_id);
++
++  update_func (monitor);
+ }
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+-- 
+GitLab
+
