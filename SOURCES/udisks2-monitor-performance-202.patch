@@ -1,0 +1,109 @@
+From 14dc69defb82a789999ba43e5350438d9c7086a6 Mon Sep 17 00:00:00 2001
+Date: Mon, 11 Mar 2024 10:20:51 +0100
+Subject: [PATCH] udisks2: Do not schedule update if pending already
+
+Currently, the udisks2 volume monitor updates everything for each
+`/proc/mounts`, `/etc/fstab`, and udisks2 change. The update takes some
+time. If too many changes happen in a short timeframe, the udisks2
+volume monitor is not able to handle those events in a real-time. The
+pending events can be processed for a long time. Many of those updates
+are redundant though as the real changes were already reflected during
+the previous updates. This causes a high CPU load among others. Let's
+add small timeout that will allow to skip accumullated events.
+
+Fixes: https://gitlab.gnome.org/GNOME/gvfs/-/issues/713
+---
+ monitor/udisks2/gvfsudisks2volumemonitor.c | 35 +++++++++++++++++++---
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/monitor/udisks2/gvfsudisks2volumemonitor.c b/monitor/udisks2/gvfsudisks2volumemonitor.c
+index c8864aea8..540683b22 100644
+--- a/monitor/udisks2/gvfsudisks2volumemonitor.c
++++ b/monitor/udisks2/gvfsudisks2volumemonitor.c
+@@ -68,8 +68,12 @@ struct _GVfsUDisks2VolumeMonitor
+ 
+   GSettings *lockdown_settings;
+   gboolean readonly_lockdown;
++
++  gint update_id;
+ };
+ 
++#define UPDATE_TIMEOUT 100 /* ms */
++
+ static UDisksClient *get_udisks_client_sync (GError **error);
+ 
+ static void update_all               (GVfsUDisks2VolumeMonitor  *monitor,
+@@ -148,6 +152,8 @@ gvfs_udisks2_volume_monitor_finalize (GObject *object)
+ 
+   g_clear_object (&monitor->lockdown_settings);
+ 
++  g_clear_handle_id (&monitor->update_id, g_source_remove);
++
+   G_OBJECT_CLASS (gvfs_udisks2_volume_monitor_parent_class)->finalize (object);
+ }
+ 
+@@ -425,12 +431,33 @@ gvfs_udisks2_volume_monitor_get_readonly_lockdown (GVfsUDisks2VolumeMonitor *mon
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+ 
++static gboolean
++update_func (gpointer user_data)
++{
++  GVfsUDisks2VolumeMonitor *monitor = GVFS_UDISKS2_VOLUME_MONITOR (user_data);
++
++  monitor->update_id = 0;
++
++  update_all (monitor, TRUE, FALSE);
++
++  return G_SOURCE_REMOVE;
++}
++
++static void
++schedule_update (GVfsUDisks2VolumeMonitor *monitor)
++{
++  if (monitor->update_id != 0)
++    return;
++
++  monitor->update_id = g_timeout_add (UPDATE_TIMEOUT, update_func, monitor);
++}
++
+ void
+ gvfs_udisks2_volume_monitor_update (GVfsUDisks2VolumeMonitor *monitor)
+ {
+   g_return_if_fail (GVFS_IS_UDISKS2_VOLUME_MONITOR (monitor));
+   udisks_client_settle (monitor->client);
+-  update_all (monitor, TRUE, FALSE);
++  schedule_update (monitor);
+ }
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+@@ -532,7 +559,7 @@ on_client_changed (UDisksClient  *client,
+                    gpointer       user_data)
+ {
+   GVfsUDisks2VolumeMonitor *monitor = GVFS_UDISKS2_VOLUME_MONITOR (user_data);
+-  update_all (monitor, TRUE, FALSE);
++  schedule_update (monitor);
+ }
+ 
+ static void
+@@ -540,7 +567,7 @@ mountpoints_changed (GUnixMountMonitor *mount_monitor,
+                      gpointer           user_data)
+ {
+   GVfsUDisks2VolumeMonitor *monitor = GVFS_UDISKS2_VOLUME_MONITOR (user_data);
+-  update_all (monitor, TRUE, FALSE);
++  schedule_update (monitor);
+ }
+ 
+ static void
+@@ -548,7 +575,7 @@ mounts_changed (GUnixMountMonitor *mount_monitor,
+                 gpointer           user_data)
+ {
+   GVfsUDisks2VolumeMonitor *monitor = GVFS_UDISKS2_VOLUME_MONITOR (user_data);
+-  update_all (monitor, TRUE, FALSE);
++  schedule_update (monitor);
+ }
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+-- 
+GitLab
+

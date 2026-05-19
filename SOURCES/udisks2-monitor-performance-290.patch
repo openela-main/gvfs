@@ -1,0 +1,90 @@
+Adapted https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/290
+
+diff --git a/monitor/udisks2/gvfsudisks2volumemonitor.c b/monitor/udisks2/gvfsudisks2volumemonitor.c
+index 51068f9..48120d9 100644
+--- a/monitor/udisks2/gvfsudisks2volumemonitor.c
++++ b/monitor/udisks2/gvfsudisks2volumemonitor.c
+@@ -92,6 +92,7 @@ static void update_volumes           (GVfsUDisks2VolumeMonitor  *monitor,
+                                       GList                    **removed_volumes,
+                                       gboolean                   coldplug);
+ static void update_fstab_volumes     (GVfsUDisks2VolumeMonitor  *monitor,
++                                      GHashTable                *mount_points_by_path, /* gchar *path ~> GUnixMountPoint * */
+                                       GList                    **added_volumes,
+                                       GList                    **removed_volumes,
+                                       gboolean                   coldplug);
+@@ -749,7 +750,7 @@ update_all (GVfsUDisks2VolumeMonitor *monitor,
+ 
+   update_drives (monitor, &added_drives, &removed_drives, coldplug);
+   update_volumes (monitor, mount_entries, mount_points_by_path, &added_volumes, &removed_volumes, coldplug);
+-  update_fstab_volumes (monitor, &added_volumes, &removed_volumes, coldplug);
++  update_fstab_volumes (monitor, mount_points_by_path, &added_volumes, &removed_volumes, coldplug);
+   update_mounts (monitor, mount_entries, mount_points_by_path, &added_mounts, &removed_mounts, coldplug);
+   update_discs (monitor,
+                 &added_volumes, &removed_volumes,
+@@ -1637,16 +1638,9 @@ mount_point_has_device (GVfsUDisks2VolumeMonitor  *monitor,
+   return ret;
+ }
+ 
+-static void
+-free_nonnull_unix_mount_point (gpointer ptr)
+-{
+-  GUnixMountPoint *mount_point = ptr;
+-  if (mount_point != NULL)
+-    g_unix_mount_point_free (mount_point);
+-}
+-
+ static void
+ update_fstab_volumes (GVfsUDisks2VolumeMonitor  *monitor,
++                      GHashTable                *mount_points_by_path, /* gchar *path ~> GUnixMountPoint * */
+                       GList                    **added_volumes,
+                       GList                    **removed_volumes,
+                       gboolean                   coldplug)
+@@ -1654,7 +1648,6 @@ update_fstab_volumes (GVfsUDisks2VolumeMonitor  *monitor,
+   GHashTable *cur_mount_points; /* GUnixMountPoint * ~> GVfsUDisks2Volume * */
+   GHashTableIter iter;
+   gpointer key = NULL, value = NULL;
+-  GList *new_mount_points, *l;
+   GVfsUDisks2Volume *volume;
+ 
+   cur_mount_points = g_hash_table_new_full (gvfs_mount_point_hash, gvfs_mount_point_equal, NULL, g_object_unref);
+@@ -1669,11 +1662,10 @@ update_fstab_volumes (GVfsUDisks2VolumeMonitor  *monitor,
+         g_hash_table_insert (cur_mount_points, mount_point, g_object_ref (volume));
+     }
+ 
+-  new_mount_points = g_unix_mount_points_get (NULL);
+-  /* filter the mount points that we don't want to include */
+-  for (l = new_mount_points; l != NULL; l = g_list_next (l))
++  g_hash_table_iter_init (&iter, mount_points_by_path);
++  while (g_hash_table_iter_next (&iter, NULL, &value))
+     {
+-      GUnixMountPoint *mount_point = l->data;
++      GUnixMountPoint *mount_point = value;
+ 
+       /* use the mount points that we want to include */
+       if (should_include_mount_point (monitor, mount_point) &&
+@@ -1685,7 +1677,7 @@ update_fstab_volumes (GVfsUDisks2VolumeMonitor  *monitor,
+             {
+               volume = gvfs_udisks2_volume_new (monitor,
+                                                 NULL,        /* block */
+-                                                mount_point,
++                                                g_unix_mount_point_copy (mount_point), /* adopts the mount_point */
+                                                 NULL,        /* drive */
+                                                 NULL,        /* activation_root */
+                                                 coldplug);
+@@ -1702,7 +1694,6 @@ update_fstab_volumes (GVfsUDisks2VolumeMonitor  *monitor,
+ 
+                   g_hash_table_add (monitor->fstab_volumes, g_object_ref (volume));
+                   *added_volumes = g_list_prepend (*added_volumes, g_steal_pointer (&volume));
+-                  l->data = NULL;
+                 }
+             }
+         }
+@@ -1718,8 +1709,6 @@ update_fstab_volumes (GVfsUDisks2VolumeMonitor  *monitor,
+       g_hash_table_remove (monitor->fstab_volumes, volume);
+     }
+ 
+-  g_list_free_full (new_mount_points, free_nonnull_unix_mount_point);
+-
+   g_hash_table_unref (cur_mount_points);
+ }
+ 
