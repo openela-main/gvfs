@@ -22,7 +22,7 @@
 
 Name:    gvfs
 Version: 1.54.4
-Release: 2%{?dist}
+Release: 3%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: LGPL-2.0-or-later AND GPL-3.0-only AND MPL-2.0 AND BSD-3-Clause-Sun
@@ -41,6 +41,12 @@ Patch:   smb-Fail-when-initial_offset-can-t-be-determined.patch
 Patch:   smb-Disable-seek-support-when-appening.patch
 Patch:   smb-Fix-offset-after-truncate-when-appending.patch
 Patch:   smb-Implement-support-for-edit-mode.patch
+
+# https://issues.redhat.com/browse/RHEL-143935
+Patch:   udisks2-monitor-performance-202.patch
+Patch:   udisks2-monitor-performance-230.patch
+Patch:   udisks2-monitor-performance-273.patch
+Patch:   udisks2-monitor-performance-290.patch
 
 BuildRequires: meson
 BuildRequires: gcc
@@ -443,6 +449,9 @@ killall -USR1 gvfsd >&/dev/null || :
 
 
 %changelog
+* Mon Jan 26 2026 Milan Crha <mcrha@redhat.com> - 1.54.4-3
+- udisks2: Use hash table for quicker lookups in the monitor (RHEL-143935)
+
 * Thu Feb 13 2025 Ondrej Holy <oholy@redhat.com> - 1.54.4-2
 - Add edit mode support for smb backend (RHEL-71089)
 
