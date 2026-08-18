@@ -1,0 +1,24 @@
+From f8504e445976830287dcb44a51514dc4c15fe528 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Wed, 7 Jun 2023 15:50:51 +0200
+Subject: [PATCH] trash: Remove unused is_homedir property
+
+---
+ daemon/trashlib/trashitem.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/daemon/trashlib/trashitem.c b/daemon/trashlib/trashitem.c
+index 08912856..a5b5b166 100644
+--- a/daemon/trashlib/trashitem.c
++++ b/daemon/trashlib/trashitem.c
+@@ -29,7 +29,6 @@ struct OPAQUE_TYPE__TrashRoot
+   gpointer user_data;
+ 
+   GHashTable *item_table;
+-  gboolean is_homedir;
+   int old_size;
+ };
+ 
+-- 
+2.53.0
+

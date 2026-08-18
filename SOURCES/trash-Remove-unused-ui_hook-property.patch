@@ -1,0 +1,68 @@
+From 07f55a1dae9af0852fed9d774a6ab7d5a924d5e1 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Fri, 20 Jan 2023 15:43:10 +0100
+Subject: [PATCH] trash: Remove unused ui_hook property
+
+---
+ daemon/trashlib/trashdir.c | 11 -----------
+ daemon/trashlib/trashdir.h |  5 -----
+ 2 files changed, 16 deletions(-)
+
+diff --git a/daemon/trashlib/trashdir.c b/daemon/trashlib/trashdir.c
+index 0d7d2b1b..707dff6c 100644
+--- a/daemon/trashlib/trashdir.c
++++ b/daemon/trashlib/trashdir.c
+@@ -373,8 +373,6 @@ trash_dir_rescan (TrashDir *dir)
+     trash_dir_empty (dir);
+ }
+ 
+-static trash_dir_ui_hook ui_hook;
+-
+ TrashDir *
+ trash_dir_new (TrashRoot  *root,
+                gboolean    watching,
+@@ -411,20 +409,11 @@ trash_dir_new (TrashRoot  *root,
+   else
+     dir->watch = NULL;
+ 
+-  if (ui_hook)
+-    ui_hook (dir, dir->directory);
+-
+   g_free (rel);
+ 
+   return dir;
+ }
+ 
+-void
+-trash_dir_set_ui_hook (trash_dir_ui_hook _ui_hook)
+-{
+-  ui_hook = _ui_hook;
+-}
+-
+ void
+ trash_dir_free (TrashDir *dir)
+ {
+diff --git a/daemon/trashlib/trashdir.h b/daemon/trashlib/trashdir.h
+index 5612f9ba..4c39d516 100644
+--- a/daemon/trashlib/trashdir.h
++++ b/daemon/trashlib/trashdir.h
+@@ -15,9 +15,6 @@
+ 
+ typedef struct          OPAQUE_TYPE__TrashDir    TrashDir;
+ 
+-typedef void (*trash_dir_ui_hook) (TrashDir *dir,
+-                                   GFile    *directory);
+-
+ TrashDir               *trash_dir_new           (TrashRoot  *root,
+                                                  gboolean    watching,
+                                                  gboolean    is_homedir,
+@@ -31,6 +28,4 @@ void                    trash_dir_watch         (TrashDir   *dir);
+ void                    trash_dir_unwatch       (TrashDir   *dir);
+ void                    trash_dir_rescan        (TrashDir   *dir);
+ 
+-void                    trash_dir_set_ui_hook   (trash_dir_ui_hook ui_hook);
+-
+ #endif /* _trashdir_h_ */
+-- 
+2.53.0
+

@@ -1,0 +1,88 @@
+From 68a056dd3764c795c5d9d5844e2cc3f20f9eaf1d Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Tue, 3 Feb 2026 16:47:50 +0100
+Subject: [PATCH] trash: Rate limit size change notifications
+
+Currently, the `attribute-changed` signal is emitted after every file
+change. This can lead to higher CPU usage if too many changes occur
+in a short time frame. To avoid this, let's limit the frequency of the
+signal to a maximum of 100 ms.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+
+Related: https://gitlab.gnome.org/GNOME/gvfs/-/issues/814
+---
+ daemon/trashlib/trashitem.c | 26 +++++++++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/daemon/trashlib/trashitem.c b/daemon/trashlib/trashitem.c
+index a5b5b166..08dd8ad8 100644
+--- a/daemon/trashlib/trashitem.c
++++ b/daemon/trashlib/trashitem.c
+@@ -30,8 +30,12 @@ struct OPAQUE_TYPE__TrashRoot
+ 
+   GHashTable *item_table;
+   int old_size;
++
++  guint size_change_id;
+ };
+ 
++#define SIZE_CHANGE_TIMEOUT 100 /* ms */
++
+ struct OPAQUE_TYPE__TrashItem
+ {
+   TrashRoot *root;
+@@ -283,6 +287,17 @@ trash_item_invoke_closure (NotifyClosure *closure)
+   g_slice_free (NotifyClosure, closure);
+ }
+ 
++static gboolean
++trash_root_size_change_timeout (gpointer user_data)
++{
++  TrashRoot *root = user_data;
++
++  root->size_change_id = 0;
++  root->size_change (root->user_data);
++
++  return G_SOURCE_REMOVE;
++}
++
+ void
+ trash_root_thaw (TrashRoot *root)
+ {
+@@ -308,10 +323,13 @@ trash_root_thaw (TrashRoot *root)
+   size_changed = root->old_size != size;
+   root->old_size = size;
+ 
+-  g_rw_lock_writer_unlock (&root->lock);
++  /* Rate limit size_change notifications */
++  if (size_changed && root->size_change_id == 0)
++    root->size_change_id = g_timeout_add (SIZE_CHANGE_TIMEOUT,
++                                          trash_root_size_change_timeout,
++                                          root);
+ 
+-  if (size_changed)
+-    root->size_change (root->user_data);
++  g_rw_lock_writer_unlock (&root->lock);
+ }
+ 
+ static void
+@@ -341,6 +359,7 @@ trash_root_new (trash_item_notify create,
+   root->item_table = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                             NULL, trash_item_removed);
+   root->old_size = 0;
++  root->size_change_id = 0;
+ 
+   return root;
+ }
+@@ -348,6 +367,7 @@ trash_root_new (trash_item_notify create,
+ void
+ trash_root_free (TrashRoot *root)
+ {
++  g_clear_handle_id (&root->size_change_id, g_source_remove);
+   g_hash_table_destroy (root->item_table);
+ 
+   while (!g_queue_is_empty (root->notifications))
+-- 
+2.53.0
+

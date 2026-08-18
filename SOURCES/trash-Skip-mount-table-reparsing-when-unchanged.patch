@@ -1,0 +1,47 @@
+From 1ae1e68794a01b524d91c3da0addeca4d060b795 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Tue, 2 Jun 2026 15:54:37 +0200
+Subject: [PATCH] trash: Skip mount table reparsing when unchanged
+
+Backport of commit e1821cdc.
+
+Adapted for older GLib API: `g_unix_mount_entries_get`/`g_unix_mount_entries_changed_since` replaced with `g_unix_mounts_get`/`g_unix_mounts_changed_since`.
+---
+ daemon/trashlib/trashwatcher.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/trashlib/trashwatcher.c b/daemon/trashlib/trashwatcher.c
+index e44ab06..59303f0 100644
+--- a/daemon/trashlib/trashwatcher.c
++++ b/daemon/trashlib/trashwatcher.c
+@@ -142,6 +142,7 @@ struct OPAQUE_TYPE__TrashWatcher
+   gulong mounts_changed_id;
+   GHashTable *mounts; /* mount_path -> TrashMount */
+   guint update_id;
++  guint64 last_mount_time;
+ 
+   TrashDir *homedir_trashdir;
+   WatchType homedir_type;
+@@ -246,7 +247,10 @@ trash_watcher_remount_do (TrashWatcher *watcher)
+   gpointer key, value;
+   const char *mount_path;
+ 
+-  mounts = g_unix_mounts_get (NULL);
++  if (!g_unix_mounts_changed_since (watcher->last_mount_time))
++    return;
++
++  mounts = g_unix_mounts_get (&watcher->last_mount_time);
+   mount_paths = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+ 
+   for (l = mounts; l != NULL; l = l->next)
+@@ -339,6 +343,7 @@ trash_watcher_new (TrashRoot *root)
+   watcher->mounts = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+   watcher->watching = FALSE;
+   watcher->update_id = 0;
++  watcher->last_mount_time = 0;
+   watcher->mount_monitor = g_unix_mount_monitor_get ();
+   watcher->mounts_changed_id = 0;
+ 
+-- 
+2.53.0
+

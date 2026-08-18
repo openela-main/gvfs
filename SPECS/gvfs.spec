@@ -25,7 +25,7 @@
 
 Name: gvfs
 Version: 1.36.2
-Release: 20%{?dist}
+Release: 21%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -98,6 +98,29 @@ Patch27: udisks2-monitor-performance-230.patch
 Patch28: udisks2-monitor-performance-273.patch
 Patch29: udisks2-monitor-performance-290.patch
 Patch30: udisks2-monitor-performance-297.patch
+
+# Improve trash backend performance
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/287
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/175
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/169
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/11
+Patch31: backend-Prevent-usage-of-NULL.patch
+Patch32: trash-Add-is_root-function.patch
+Patch33: trash-Remove-unused-ui_hook-property.patch
+Patch34: trash-Remove-unused-is_homedir-property.patch
+Patch35: trash-Do-not-create-monitors-for-non-root-items.patch
+Patch36: trash-Run-blocking-methods-on-a-thread-pool.patch
+Patch37: trash-Add-worker-thread.patch
+Patch38: trash-Chain-up-finalize.patch
+Patch39: trash-Rate-limit-mount-updates.patch
+Patch40: trash-Add-debug-prints-for-mounts-handling.patch
+Patch41: trash-Use-GHashTable-for-mount-tracking.patch
+Patch42: trash-Use-GHashTable-for-trash-directory-items.patch
+Patch43: trash-Rate-limit-size-change-notifications.patch
+Patch44: trash-Use-weak-refs-for-monitor-lifecycle.patch
+Patch45: trash-Defer-mount-monitoring-to-active-watchers-only.patch
+Patch46: daemon-Add-process-name-to-debug-handler-log.patch
+Patch47: trash-Skip-mount-table-reparsing-when-unchanged.patch
 
 BuildRequires: pkgconfig
 BuildRequires: pkgconfig(glib-2.0) >= %{glib2_version}
@@ -489,6 +512,10 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Tue Jun 02 2026 Ondrej Holy <oholy@redhat.com> - 1.36.2-21
+- Improve trash backend performance
+  Resolves: RHEL-127445
+
 * Fri Feb 06 2026 Milan Crha <mcrha@redhat.com> - 1.36.2-20
 - udisks2: Correct add to hash table for items which can clash in the monitor (RHEL-76484)
 

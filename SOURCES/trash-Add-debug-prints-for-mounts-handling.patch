@@ -1,0 +1,60 @@
+From 78cc4e391d4f9e6e17af83e980f9d819b7fd208e Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Tue, 2 Jun 2026 15:32:58 +0200
+Subject: [PATCH] trash: Add debug prints for mounts handling
+
+Backport of commit e0018263.
+
+Adapted for older GLib API: `g_unix_mount_entry_get_device_path`/`get_mount_path`/`get_fs_type` replaced with `g_unix_mount_get_device_path`/`g_unix_mount_get_mount_path`/`g_unix_mount_get_fs_type`.
+---
+ daemon/trashlib/trashwatcher.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/daemon/trashlib/trashwatcher.c b/daemon/trashlib/trashwatcher.c
+index fe2ee44..c195234 100644
+--- a/daemon/trashlib/trashwatcher.c
++++ b/daemon/trashlib/trashwatcher.c
+@@ -245,12 +245,22 @@ trash_watcher_remount_do (TrashWatcher *watcher)
+       if (result < 0)
+         {
+           /* new entry.  add it. */
++          g_debug ("trash_watcher_remount_do: insert %s %s %s\n",
++                   g_unix_mount_get_device_path (new->data),
++                   g_unix_mount_get_mount_path (new->data),
++                   g_unix_mount_get_fs_type (new->data));
++
+           trash_mount_insert (watcher, &old, new->data);
+           new = new->next;
+         }
+       else if (result > 0)
+         {
+           /* old entry.  remove it. */
++          g_debug ("trash_watcher_remount_do: remove %s %s %s\n",
++                   g_unix_mount_get_device_path ((*old)->mount_entry),
++                   g_unix_mount_get_mount_path ((*old)->mount_entry),
++                   g_unix_mount_get_fs_type ((*old)->mount_entry));
++
+           trash_mount_remove (old);
+         }
+       else
+@@ -271,6 +281,8 @@ trash_watcher_remount_timeout (gpointer user_data)
+ {
+   TrashWatcher *watcher = user_data;
+ 
++  g_debug ("trash_watcher_remount_timeout\n");
++
+   watcher->update_id = 0;
+ 
+   trash_watcher_remount_do (watcher);
+@@ -281,6 +293,8 @@ trash_watcher_remount_timeout (gpointer user_data)
+ static void
+ trash_watcher_remount (TrashWatcher *watcher)
+ {
++  g_debug ("trash_watcher_remount\n");
++
+   if (watcher->update_id != 0)
+     return;
+ 
+-- 
+2.53.0
+

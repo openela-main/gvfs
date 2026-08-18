@@ -1,0 +1,43 @@
+From d1ab5870e828df259897598298c2ca66b587426a Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Wed, 29 Aug 2018 15:36:57 +0200
+Subject: [PATCH] backend: Prevent usage of NULL
+
+g_dbus_connection_get_peer_credentials may fail in some cases, see
+the documentation, and thus we have to check the return value before
+use in order to prevent warnings like the following:
+
+g_credentials_get_unix_pid: assertion 'G_IS_CREDENTIALS (credentials)' failed
+
+Print simply -1 if pid can't be obtained this way.
+---
+ daemon/gvfsbackend.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/daemon/gvfsbackend.c b/daemon/gvfsbackend.c
+index 673070fa..4fd3455c 100644
+--- a/daemon/gvfsbackend.c
++++ b/daemon/gvfsbackend.c
+@@ -609,14 +609,17 @@ g_vfs_backend_invocation_first_handler (GVfsDBusMount *object,
+ {
+   GDBusConnection *connection;
+   GCredentials *credentials;
++  pid_t pid = -1;
+ 
+   connection = g_dbus_method_invocation_get_connection (invocation);
+   credentials = g_dbus_connection_get_peer_credentials (connection);
++  if (credentials)
++    pid = g_credentials_get_unix_pid (credentials, NULL);
+ 
+-  g_debug ("backend_dbus_handler %s:%s (pid=%u)\n",
++  g_debug ("backend_dbus_handler %s:%s (pid=%ld)\n",
+            g_dbus_method_invocation_get_interface_name (invocation),
+            g_dbus_method_invocation_get_method_name (invocation),
+-           g_credentials_get_unix_pid (credentials, NULL));
++           (long)pid);
+ 
+   if (backend->priv->block_requests)
+     {
+-- 
+2.53.0
+

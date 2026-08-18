@@ -1,0 +1,119 @@
+From 181da9f0d10a9e75795db5bb138214a89382271f Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Fri, 21 Nov 2025 13:28:55 +0100
+Subject: [PATCH] trash: Rate limit mount updates
+
+Currently, the trash daemon processes every `mounts_changed` signal.
+This leads to high CPU usage when many mount events occur in a short
+timeframe. Let's rate limit mount processing to avoid high CPU usage
+in this case. The timeout is randomly chosen within the interval
+50-500 ms to better balance the load when multiple daemons are
+running simultaneously.
+
+Related: https://gitlab.gnome.org/GNOME/gvfs/-/issues/814
+---
+ daemon/trashlib/trashwatcher.c | 39 ++++++++++++++++++++++++++++++++--
+ 1 file changed, 37 insertions(+), 2 deletions(-)
+
+diff --git a/daemon/trashlib/trashwatcher.c b/daemon/trashlib/trashwatcher.c
+index 80a24d3d..664380c6 100644
+--- a/daemon/trashlib/trashwatcher.c
++++ b/daemon/trashlib/trashwatcher.c
+@@ -142,6 +142,7 @@ struct OPAQUE_TYPE__TrashWatcher
+ 
+   GUnixMountMonitor *mount_monitor;
+   TrashMount *mounts;
++  guint update_id;
+ 
+   TrashDir *homedir_trashdir;
+   WatchType homedir_type;
+@@ -158,6 +159,8 @@ struct _TrashMount
+   TrashMount *next;
+ };
+ 
++#define UPDATE_TIMEOUT 100 /* ms */
++
+ static void
+ trash_mount_insert (TrashWatcher      *watcher,
+                     TrashMount      ***mount_ptr_ptr,
+@@ -247,7 +250,7 @@ ignore_trash_mount (GUnixMountEntry *mount)
+ }
+ 
+ static void
+-trash_watcher_remount (TrashWatcher *watcher)
++trash_watcher_remount_do (TrashWatcher *watcher)
+ {
+   TrashMount **old;
+   GList *mounts;
+@@ -298,6 +301,29 @@ trash_watcher_remount (TrashWatcher *watcher)
+   g_list_free (mounts);
+ }
+ 
++static gboolean
++trash_watcher_remount_timeout (gpointer user_data)
++{
++  TrashWatcher *watcher = user_data;
++
++  watcher->update_id = 0;
++
++  trash_watcher_remount_do (watcher);
++
++  return G_SOURCE_REMOVE;
++}
++
++static void
++trash_watcher_remount (TrashWatcher *watcher)
++{
++  if (watcher->update_id != 0)
++    return;
++
++  watcher->update_id = g_timeout_add (UPDATE_TIMEOUT * g_random_double_range (0.5, 5),
++                                      trash_watcher_remount_timeout,
++                                      watcher);
++}
++
+ TrashWatcher *
+ trash_watcher_new (TrashRoot *root)
+ {
+@@ -310,6 +336,7 @@ trash_watcher_new (TrashRoot *root)
+   watcher->root = root;
+   watcher->mounts = NULL;
+   watcher->watching = FALSE;
++  watcher->update_id = 0;
+   watcher->mount_monitor = g_unix_mount_monitor_get ();
+   g_signal_connect_swapped (watcher->mount_monitor, "mounts_changed",
+                             G_CALLBACK (trash_watcher_remount), watcher);
+@@ -328,7 +355,7 @@ trash_watcher_new (TrashRoot *root)
+   g_object_unref (homedir_trashdir);
+   g_object_unref (user_datadir);
+ 
+-  trash_watcher_remount (watcher);
++  trash_watcher_remount_do (watcher);
+ 
+   return watcher;
+ }
+@@ -336,6 +363,8 @@ trash_watcher_new (TrashRoot *root)
+ void
+ trash_watcher_free (TrashWatcher *watcher)
+ {
++  g_clear_handle_id (&watcher->update_id, g_source_remove);
++
+   /* We just leak everything here, as this is not normally hit.
+      This used to be a g_assert_not_reached(), and that got hit when
+      mounting the trash backend failed due to the trash already being
+@@ -387,6 +416,12 @@ trash_watcher_rescan (TrashWatcher *watcher)
+ {
+   TrashMount *mount;
+ 
++  if (watcher->update_id != 0)
++    {
++      g_source_remove (watcher->update_id);
++      trash_watcher_remount_timeout (watcher);
++    }
++
+   if (!watcher->watching || watcher->homedir_type != TRASH_WATCHER_TRUSTED)
+     trash_dir_rescan (watcher->homedir_trashdir);
+ 
+-- 
+2.53.0
+
