@@ -1,0 +1,74 @@
+From dc4965092df573d1a6c7e72b7a28fe6d000dbbc9 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Mon, 22 Jun 2026 16:22:49 +0200
+Subject: [PATCH] sftp: Limit maximum SFTP reply packet size
+
+Currently, the 32-bit length field from the server response is
+used directly to allocate memory, allowing up to 4 GiB. A
+buggy server could cause an out-of-memory crash. Let's
+introduce a `MAX_REPLY_SIZE` cap of 256 KiB, matching
+`MAX_PACKET_LEN` used by OpenSSH and libssh2, and reject
+oversized packets in both the synchronous and asynchronous
+read paths. Note that SSH transport already caps individual
+packets, but an SFTP message can span multiple SSH packets,
+so this provides an additional safeguard.
+
+Made-with: Cursor
+---
+ daemon/gvfsbackendsftp.c | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/gvfsbackendsftp.c b/daemon/gvfsbackendsftp.c
+index cb288b9e..924c6059 100644
+--- a/daemon/gvfsbackendsftp.c
++++ b/daemon/gvfsbackendsftp.c
+@@ -93,6 +93,13 @@
+  */
+ #define MAX_BUFFER_SIZE 32768
+ 
++/* Limit on SFTP reply packet size to prevent OOM from buggy servers.
++ * Matches MAX_PACKET_LEN used by OpenSSH and libssh2.  Note that SSH
++ * transport already caps individual packets, but an SFTP message can
++ * span multiple SSH packets, so this provides an additional safeguard.
++ */
++#define MAX_REPLY_SIZE (256 * 1024)
++
+ static GQuark id_q;
+ 
+ typedef enum {
+@@ -722,7 +729,14 @@ read_reply_sync (Connection *conn, gsize *len_out, GError **error)
+     }
+   
+   len = GUINT32_FROM_BE (len);
+-  
++  if (len > MAX_REPLY_SIZE)
++    {
++      g_debug ("Server sent oversized packet (%u bytes)", len);
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           _("Invalid reply received"));
++      return NULL;
++    }
++
+   array = g_byte_array_sized_new (len);
+ 
+   if (!g_input_stream_read_all (conn->reply_stream,
+@@ -1552,6 +1566,16 @@ read_reply_async_got_len  (GObject *source_object,
+       return;
+     }
+   conn->reply_size = GUINT32_FROM_BE (conn->reply_size);
++  if (conn->reply_size > MAX_REPLY_SIZE)
++    {
++      GError *error = NULL;
++
++      g_debug ("Server sent oversized packet (%u bytes)", conn->reply_size);
++      g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           _("Invalid reply received"));
++      fail_jobs_and_unmount (conn->op_backend, error);
++      return;
++    }
+ 
+   conn->reply_size_read = 0;
+   conn->reply = g_malloc (conn->reply_size);
+-- 
+2.54.0
+

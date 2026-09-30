@@ -1,0 +1,37 @@
+From 1ff24454d1c9b964a5f0efdd54c6d1421e770d64 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Mon, 27 Jul 2026 14:57:44 +0200
+Subject: [PATCH] sftp: Return error when server sends more data than requested
+
+Currently, `read_reply` silently clamps the received data length using
+`MIN (count, bytes_requested)`, as introduced by 5ab77256f9c0. The
+SFTP specification explicitly states that a server MUST NOT respond
+with more data than the requested length, so let's return an "Invalid
+reply received" error instead.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+---
+ daemon/gvfsbackendsftp.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/gvfsbackendsftp.c b/daemon/gvfsbackendsftp.c
+index c834d9af..2c9a45e0 100644
+--- a/daemon/gvfsbackendsftp.c
++++ b/daemon/gvfsbackendsftp.c
+@@ -2892,7 +2892,12 @@ read_reply (GVfsBackendSftp *backend,
+     }
+   
+   count = g_data_input_stream_read_uint32 (reply, NULL, NULL);
+-  count = MIN (count, G_VFS_JOB_READ (job)->bytes_requested);
++  if (count > G_VFS_JOB_READ (job)->bytes_requested)
++    {
++      g_vfs_job_failed (job, G_IO_ERROR, G_IO_ERROR_FAILED,
++                        _("Invalid reply received"));
++      return;
++    }
+ 
+   if (!g_input_stream_read_all (G_INPUT_STREAM (reply),
+                                 G_VFS_JOB_READ (job)->buffer, count,
+-- 
+2.53.0
+
