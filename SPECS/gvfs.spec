@@ -22,7 +22,7 @@
 
 Name: gvfs
 Version: 1.48.1
-Release: 8%{?dist}
+Release: 8%{?dist}.1
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -51,6 +51,20 @@ Patch11: udisks2-monitor-performance-230.patch
 Patch12: udisks2-monitor-performance-273.patch
 Patch13: udisks2-monitor-performance-290.patch
 Patch14: udisks2-monitor-performance-297.patch
+
+# CVE-2026-84268
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/5ab77256f9c071c7c99a5298db1729cf143bff05
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/dc4965092df573d1a6c7e72b7a28fe6d000dbbc9
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/d9a59b8e385189b4783d9b66ca475f530fb26693
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/1ff24454d1c9b964a5f0efdd54c6d1421e770d64
+Patch15: sftp-Clamp-read_reply-count-to-requested-buffer-size.patch
+Patch16: sftp-Limit-maximum-SFTP-reply-packet-size.patch
+Patch17: sftp-Validate-that-reads-fully-complete-before-using.patch
+Patch18: sftp-Return-error-when-server-sends-more-data-than-r.patch
+
+# CVE-2026-88924
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/371909dd201eb66c5c4d18d9e88fdae4a070b76a
+Patch19: daemon-Set-socket-ownership-before-creation.patch
 
 BuildRequires: meson
 BuildRequires: gcc
@@ -448,6 +462,10 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Thu Sep 10 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 1.48.1-8.1
+- Backport several CVE fixes (CVE-2026-84268, CVE-2026-88924)
+  Resolves: RHEL-252312, RHEL-257348
+
 * Fri Feb 06 2026 Milan Crha <mcrha@redhat.com> - 1.48.1-8
 - udisks2: Correct add to hash table for items which can clash in the monitor (RHEL-143934)
 
