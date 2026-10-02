@@ -25,7 +25,7 @@
 
 Name: gvfs
 Version: 1.36.2
-Release: 21%{?dist}
+Release: 22%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -121,6 +121,16 @@ Patch44: trash-Use-weak-refs-for-monitor-lifecycle.patch
 Patch45: trash-Defer-mount-monitoring-to-active-watchers-only.patch
 Patch46: daemon-Add-process-name-to-debug-handler-log.patch
 Patch47: trash-Skip-mount-table-reparsing-when-unchanged.patch
+
+# CVE-2026-84268
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/5ab77256f9c071c7c99a5298db1729cf143bff05
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/dc4965092df573d1a6c7e72b7a28fe6d000dbbc9
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/d9a59b8e385189b4783d9b66ca475f530fb26693
+# https://gitlab.gnome.org/GNOME/gvfs/-/commit/1ff24454d1c9b964a5f0efdd54c6d1421e770d64
+Patch48: sftp-Clamp-read_reply-count-to-requested-buffer-size.patch
+Patch49: sftp-Limit-maximum-SFTP-reply-packet-size.patch
+Patch50: sftp-Validate-that-reads-fully-complete-before-using.patch
+Patch51: sftp-Return-error-when-server-sends-more-data-than-r.patch
 
 BuildRequires: pkgconfig
 BuildRequires: pkgconfig(glib-2.0) >= %{glib2_version}
@@ -512,6 +522,10 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
+* Tue Sep 15 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 1.36.2-22
+- Fix heap buffer overflow in SFTP backend (CVE-2026-84268)
+  Resolves: RHEL-252300
+
 * Tue Jun 02 2026 Ondrej Holy <oholy@redhat.com> - 1.36.2-21
 - Improve trash backend performance
   Resolves: RHEL-127445
