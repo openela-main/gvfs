@@ -1,0 +1,30 @@
+From f1cdb812f8fa6f06239183923f920025a05e0712 Mon Sep 17 00:00:00 2001
+From: Maximiliano Sandoval <msandova@gnome.org>
+Date: Fri, 10 Apr 2026 23:52:16 +0200
+Subject: [PATCH] trash: Chain up finalize
+
+Currently, `trash_backend_finalize()` only releases backend-specific
+monitors. Without chaining up, parent `GObject` finalization is
+skipped, which can leave parent-side teardown incomplete. Let's call
+`g_vfs_backend_trash_parent_class->finalize()` at the end of
+`trash_backned_finalize()`.
+---
+ daemon/gvfsbackendtrash.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/daemon/gvfsbackendtrash.c b/daemon/gvfsbackendtrash.c
+index 0966242a..1dcb44f0 100644
+--- a/daemon/gvfsbackendtrash.c
++++ b/daemon/gvfsbackendtrash.c
+@@ -987,6 +987,8 @@ trash_backend_finalize (GObject *object)
+   if (backend->dir_monitor)
+     g_object_unref (backend->dir_monitor);
+   backend->dir_monitor = NULL;
++
++  G_OBJECT_CLASS (g_vfs_backend_trash_parent_class)->finalize (object);
+ }
+ 
+ static void
+-- 
+2.53.0
+

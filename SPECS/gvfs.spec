@@ -22,7 +22,7 @@
 
 Name: gvfs
 Version: 1.48.1
-Release: 8%{?dist}.1
+Release: 9%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: GPLv3 and LGPLv2+ and BSD and MPLv2.0
@@ -52,19 +52,28 @@ Patch12: udisks2-monitor-performance-273.patch
 Patch13: udisks2-monitor-performance-290.patch
 Patch14: udisks2-monitor-performance-297.patch
 
-# CVE-2026-84268
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/5ab77256f9c071c7c99a5298db1729cf143bff05
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/dc4965092df573d1a6c7e72b7a28fe6d000dbbc9
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/d9a59b8e385189b4783d9b66ca475f530fb26693
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/1ff24454d1c9b964a5f0efdd54c6d1421e770d64
-Patch15: sftp-Clamp-read_reply-count-to-requested-buffer-size.patch
-Patch16: sftp-Limit-maximum-SFTP-reply-packet-size.patch
-Patch17: sftp-Validate-that-reads-fully-complete-before-using.patch
-Patch18: sftp-Return-error-when-server-sends-more-data-than-r.patch
-
-# CVE-2026-88924
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/371909dd201eb66c5c4d18d9e88fdae4a070b76a
-Patch19: daemon-Set-socket-ownership-before-creation.patch
+# Improve trash backend performance
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/287
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/175
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/169
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/162
+Patch15: trash-Sync-trash-dir-items-when-files-change.patch
+Patch16: trash-Add-is_root-function.patch
+Patch17: trash-Remove-unused-ui_hook-property.patch
+Patch18: trash-Remove-unused-is_homedir-property.patch
+Patch19: trash-Do-not-create-monitors-for-non-root-items.patch
+Patch20: trash-Run-blocking-methods-on-a-thread-pool.patch
+Patch21: trash-Add-worker-thread.patch
+Patch22: trash-Chain-up-finalize.patch
+Patch23: trash-Rate-limit-mount-updates.patch
+Patch24: trash-Add-debug-prints-for-mounts-handling.patch
+Patch25: trash-Use-GHashTable-for-mount-tracking.patch
+Patch26: trash-Use-GHashTable-for-trash-directory-items.patch
+Patch27: trash-Rate-limit-size-change-notifications.patch
+Patch28: trash-Use-weak-refs-for-monitor-lifecycle.patch
+Patch29: trash-Defer-mount-monitoring-to-active-watchers-only.patch
+Patch30: daemon-Add-process-name-to-debug-handler-log.patch
+Patch31: trash-Skip-mount-table-reparsing-when-unchanged.patch
 
 BuildRequires: meson
 BuildRequires: gcc
@@ -462,9 +471,9 @@ killall -USR1 gvfsd >&/dev/null || :
 %{_datadir}/installed-tests
 
 %changelog
-* Thu Sep 10 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 1.48.1-8.1
-- Backport several CVE fixes (CVE-2026-84268, CVE-2026-88924)
-  Resolves: RHEL-252312, RHEL-257348
+* Tue Jun 02 2026 Ondrej Holy <oholy@redhat.com> - 1.48.1-9
+- Improve trash backend performance
+  Resolves: RHEL-138574
 
 * Fri Feb 06 2026 Milan Crha <mcrha@redhat.com> - 1.48.1-8
 - udisks2: Correct add to hash table for items which can clash in the monitor (RHEL-143934)
