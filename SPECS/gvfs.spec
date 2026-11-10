@@ -22,7 +22,7 @@
 
 Name:    gvfs
 Version: 1.54.4
-Release: 4%{?dist}.1
+Release: 5%{?dist}
 Summary: Backends for the gio framework in GLib
 
 License: LGPL-2.0-or-later AND GPL-3.0-only AND MPL-2.0 AND BSD-3-Clause-Sun
@@ -49,19 +49,18 @@ Patch:   udisks2-monitor-performance-273.patch
 Patch:   udisks2-monitor-performance-290.patch
 Patch:   udisks2-monitor-performance-297.patch
 
-# CVE-2026-84268
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/5ab77256f9c071c7c99a5298db1729cf143bff05
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/dc4965092df573d1a6c7e72b7a28fe6d000dbbc9
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/d9a59b8e385189b4783d9b66ca475f530fb26693
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/1ff24454d1c9b964a5f0efdd54c6d1421e770d64
-Patch:   sftp-Clamp-read_reply-count-to-requested-buffer-size.patch
-Patch:   sftp-Limit-maximum-SFTP-reply-packet-size.patch
-Patch:   sftp-Validate-that-reads-fully-complete-before-using.patch
-Patch:   sftp-Return-error-when-server-sends-more-data-than-r.patch
-
-# CVE-2026-88924
-# https://gitlab.gnome.org/GNOME/gvfs/-/commit/371909dd201eb66c5c4d18d9e88fdae4a070b76a
-Patch:   daemon-Set-socket-ownership-before-creation.patch
+# Improve trash backend performance
+# https://gitlab.gnome.org/GNOME/gvfs/-/merge_requests/287
+Patch:   trash-Rate-limit-mount-updates.patch
+Patch:   trash-Add-debug-prints-for-mounts-handling.patch
+Patch:   trash-Use-GHashTable-for-mount-tracking.patch
+Patch:   trash-Use-GHashTable-for-trash-directory-items.patch
+Patch:   trash-Rate-limit-size-change-notifications.patch
+Patch:   trash-Chain-up-finalize.patch
+Patch:   trash-Use-weak-refs-for-monitor-lifecycle.patch
+Patch:   trash-Defer-mount-monitoring-to-active-watchers-only.patch
+Patch:   daemon-Add-process-name-to-debug-handler-log.patch
+Patch:   trash-Skip-mount-table-reparsing-when-unchanged.patch
 
 BuildRequires: meson
 BuildRequires: gcc
@@ -464,9 +463,9 @@ killall -USR1 gvfsd >&/dev/null || :
 
 
 %changelog
-* Thu Sep 10 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 1.54.4-4.1
-- Backport several CVE fixes (CVE-2026-84268, CVE-2026-88924)
-  Resolves: RHEL-252305, RHEL-257341
+* Tue Jun 02 2026 Ondrej Holy <oholy@redhat.com> - 1.54.4-5
+- Improve trash backend performance
+  Resolves: RHEL-138575
 
 * Fri Feb 06 2026 Milan Crha <mcrha@redhat.com> - 1.54.4-4
 - udisks2: Correct add to hash table for items which can clash in the monitor (RHEL-143935)
